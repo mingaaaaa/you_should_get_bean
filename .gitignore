@@ -1,0 +1,52 @@
+# ===== 环境变量 / 密钥 =====
+.env
+.env.*
+!.env.example
+
+# ===== Python 后端 (backend/) =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== Node / Next.js 前端 (frontend/) =====
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+.vercel/
+
+# 包管理日志
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ===== ZCode 本地配置 =====
+.zcode/
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/
+*.swp
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+
+# ===== 日志 =====
+*.log
+logs/

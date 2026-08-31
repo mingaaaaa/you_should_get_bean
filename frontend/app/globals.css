@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 蜜糖小熊主题色板 */
+@theme {
+  --color-honey: #f7b32b;
+  --color-honey-deep: #dd9410;
+  --color-honey-soft: #ffe9bf;
+  --color-cream: #fff6e5;
+  --color-bear: #d9a066;
+  --color-bear-dark: #b8794a;
+  --color-cocoa: #6b4226;
+  --color-cocoa-light: #a67b5b;
+  --color-blush: #ffb3ba;
+
+  --animate-wiggle: wiggle 3.5s ease-in-out infinite;
+  --animate-float: float 5s ease-in-out infinite;
+  --animate-float-slow: float 7.5s ease-in-out infinite;
+}
+
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(-4deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-14px) rotate(8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-wiggle,
+  .animate-float,
+  .animate-float-slow {
+    animation: none;
+  }
+}
