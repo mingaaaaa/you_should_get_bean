@@ -66,12 +66,12 @@ def generate() -> dict[str, str]:
     captcha_id = str(uuid.uuid4()) # 生成唯一的验证码id
 
     now = time.time() # 获取当前时间戳
-    # 删除过期验证码
-    for id,(text, timestamp) in _store.items():
+    # 删除过期验证码（迭代副本再删除，直接在 items() 迭代中 del 会抛 RuntimeError）
+    for id,(text, timestamp) in list(_store.items()):
         if now > timestamp:
             del _store[id]
     _store[captcha_id] = (code, now + EXPIRE_TIME) # 存储验证码和过期时间
-    return {"id": captcha_id, "image": _draw_image(code)}
+    return {"captcha_id": captcha_id, "image": _draw_image(code)}
 
 
 def verify(captcha_id: str, code: str) -> bool:
