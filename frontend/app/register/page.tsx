@@ -14,8 +14,23 @@ import {
 } from "../components/mascots";
 import { kuaile } from "../fonts";
 import { API } from "../lib/api";
+import { encryptPassword } from "../lib/crypto";
 
 const CAPTCHA_COOLDOWN_MS = 3000;
+
+// 拉取失败返回 null：页面不用公钥也能正常填表，提交时再兜底重试
+async function fetchPublicKey(): Promise<string | null> {
+  try {
+    const res = await fetch(API.public_key, { cache: "no-store" });
+    const data = await res.json().catch(() => null);
+    if (res.ok && typeof data?.public_key === "string") {
+      return data.public_key;
+    }
+  } catch {
+    // 后端没开或网络异常，静默处理
+  }
+  return null;
+}
 
 type Status = "idle" | "loading" | "success";
 type Captcha = { captcha_id: string; image: string };
@@ -26,6 +41,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [captchaCode, setCaptchaCode] = useState("");
   const [captcha, setCaptcha] = useState<Captcha | null>(null);
+  const [publicKey, setPublicKey] = useState<string | null>(null);
   const [captchaMsg, setCaptchaMsg] = useState<string | null>(null);
   const [cooling, setCooling] = useState(false);
   const [errors, setErrors] = useState<{
@@ -40,6 +56,7 @@ export default function RegisterPage() {
   const lastCaptchaAt = useRef(0);
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 加载验证码
   async function loadCaptcha() {
     try {
       const res = await fetch(API.captcha, { cache: "no-store" });
@@ -60,10 +77,14 @@ export default function RegisterPage() {
   }
 
   useEffect(() => {
-    // 挂载时拉取第一张验证码；所有 setState 都在 await fetch 之后的异步回调里，
+    // 挂载时拉取第一张验证码和公钥；所有 setState 都在 await fetch 之后的异步回调里，
     // 该规则无法跨 await 分析，误报为同步 setState
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    /* eslint-disable react-hooks/set-state-in-effect */
     loadCaptcha();
+    fetchPublicKey().then((key) => {
+      if (key) setPublicKey(key);
+    });
+    /* eslint-enable react-hooks/set-state-in-effect */
     return () => {
       if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
     };
@@ -74,6 +95,7 @@ export default function RegisterPage() {
     loadCaptcha();
   }
 
+  // 校验
   function validate() {
     const e: typeof errors = {};
     const name = username.trim();
@@ -98,6 +120,7 @@ export default function RegisterPage() {
     return e;
   }
 
+  // 提交注册
   async function handleSubmit(ev: FormEvent<HTMLFormElement>) {
     ev.preventDefault();
     if (status === "loading") return;
@@ -107,14 +130,34 @@ export default function RegisterPage() {
     if (Object.keys(e).length > 0) return;
 
     setStatus("loading");
+    // 提交前确保有公钥：挂载时没拿到（比如后端刚启动）就再试一次，
+    // 不随每次提交重复请求，公钥接口有限流（5 次/60 秒/IP）
+    let key = publicKey;
+    if (!key) {
+      key = await fetchPublicKey();
+      if (key) setPublicKey(key);
+    }
+    if (!key) {
+      setServerError("小熊没拿到加密公钥，稍后再试试 🍯");
+      setStatus("idle");
+      return;
+    }
+    const cipher = encryptPassword(key, password);
+    if (!cipher) {
+      setServerError("密码加密失败了，稍后再试试 🍯");
+      setStatus("idle");
+      return;
+    }
     try {
       const res = await fetch(API.register, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: username.trim(),
-          email: email.trim() === "" ? null : email.trim(),
-          password,
+          // 邮箱为空时不传该字段：后端 EmailStr 不接受 null，显式传空串也过不了校验
+          ...(email.trim() === "" ? {} : { email: email.trim() }),
+          // 传 RSA 加密后的 base64 密文，不传明文
+          password: cipher,
           captcha_id: captcha?.captcha_id ?? "",
           captcha_code: captchaCode,
         }),

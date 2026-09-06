@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db
 from app.models.user import User
+from argon2 import PasswordHasher
 
 # 创建路由器对象
 # 路由前缀是auth， 标签方便文档进行分类
@@ -50,13 +51,20 @@ def get_public_key():
 def register(data: auth_schema.RegisterSchemaRequest,db:Session = Depends(get_db)):
     """注册新用户"""
     # 校验验证码是否正确
-    if not captcha.verify(data.captcha_id, data.captcha_code):
+    if not captcha.captcha_verify(data.captcha_id, data.captcha_code):
       raise HTTPException(status_code=400, detail="验证码错误或已过期")
-    user = User(username=data.username, email=data.email, password=data.password)
+    user = User(username=data.username, email=data.email, password_hash=data.password)
+    # 私钥解密得到密码文本
+    password = security.decrypt_password(data.password)
+    print(f"解密后的密码: {password}")  # 打印解密后的密码
+    # 将解密的密码进行hash处理
+    ph = PasswordHasher()
+    user.password_hash = ph.hash(password)
     try:
         db.add(user)
         db.commit()
         db.refresh(user)  # 重新 SELECT，拿回数据库生成的 id、created_at
+        return auth_schema.RegisterSchemaResponse(message="注册成功")
     except IntegrityError:
         db.rollback() # 回滚事务，避免后续操作报错
         raise HTTPException(status_code=400, detail="注册失败，用户名或邮箱已存在")

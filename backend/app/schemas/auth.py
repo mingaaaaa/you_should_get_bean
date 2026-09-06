@@ -1,15 +1,24 @@
 # 认证接口的契约
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 # ========== 请求模型 ==========
 class RegisterSchemaRequest(BaseModel):
-    """注册请求：用户名 + 邮箱 + 密码 + 验证码"""
+    """注册请求：用户名 + 密码 + 验证码；邮箱可不填"""
     username: str
-    email: EmailStr  = ''
+    email: EmailStr | None = None  # 不填时是 None，数据库存 NULL；填了就必须是合法邮箱
     password: str
     captcha_id: str
     captcha_code: str
+
+    # 前端如果传来空字符串（而不是干脆不发这个字段），先归一成 None，
+    # 否则空字符串过不了 EmailStr 校验，会报 422
+    @field_validator("email", mode="before")
+    @classmethod
+    def empty_email_to_none(cls, v):
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 # ========== 响应模型 ==========
 class CaptchaSchemaResponse(BaseModel):

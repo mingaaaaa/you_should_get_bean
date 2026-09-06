@@ -1,3 +1,10 @@
+# 前端代码验证约定
+
+- **不要使用 `pnpm build`（next build）进行代码验证**，耗时长且没必要。验证代码请用：
+  - `pnpm lint`：ESLint 检查
+  - `npx tsc --noEmit`：TypeScript 类型检查
+- 本地调试运行 `pnpm dev`。
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know

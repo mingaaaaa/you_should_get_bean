@@ -74,7 +74,7 @@ def generate() -> dict[str, str]:
     return {"captcha_id": captcha_id, "image": _draw_image(code)}
 
 
-def verify(captcha_id: str, code: str) -> bool:
+def captcha_verify(captcha_id: str, code: str) -> bool:
     """验证验证码是否正确"""
     answer_tuple = _store.get(captcha_id) # 获取验证码答案
     # 获取到后该记录直接删除,因为只要开始校验了，这条记录必定是过期的

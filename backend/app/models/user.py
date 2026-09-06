@@ -12,7 +12,7 @@ class User(Base):
     # index=True  给该字段创建索引，便于查询
     id: Mapped[int] = mapped_column(Integer, primary_key=True)  # 整型，主键，自增  主键自带索引所以不需要设置index=True
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)  # 用户名，字符串，唯一，索引，不为空
-    email: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)  # 邮箱，字符串，唯一，索引，不为空
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=True)  # 邮箱，字符串，唯一，索引，可以为空(因为是邮箱可选的)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)  # 密码哈希值，字符串，不为空
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # 是否激活，布尔型，默认True
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())  # 创建时间，日期时间型，默认当前时间
