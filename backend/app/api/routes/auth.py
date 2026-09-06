@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db
 from app.models.user import User
+from app.core.security import get_public_key, decrypt_password
 
 # 创建路由器对象
 # 路由前缀是auth， 标签方便文档进行分类
@@ -27,6 +28,18 @@ def get_captcha():
     """生成验证码信息并返回"""
     return captcha.generate() # 返回id和图片的base64编码
 
+
+# 获取公钥的接口
+@router.get(
+  '/public_key', # 路径  /auth/public_key
+  summary="获取公钥", # 摘要
+  response_model=auth_schema.PublicKeySchemaResponse, # 响应模型
+  dependencies=[Depends(captcha_rate_limit)], # 依赖 因为只需要captcha_rate_limit做校验，所以放在这里
+  responses={429: {"description": "请求过于频繁"}}, # /docs 默认只展示 200（和 422），加这段后 429 也出现在文档里
+)
+def get_public_key():
+    """返回公钥"""
+    return {"public_key": get_public_key()} # 返回PEM格式的RSA公钥
 
 
 # 注册接口
