@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# RSA 密钥文件（私钥绝不入库；公钥可由私钥随时导出，可用 scripts/gen_rsa.py 重新生成）
+*.pem
+
 # ===== Python 后端 (backend/) =====
 __pycache__/
 *.py[cod]

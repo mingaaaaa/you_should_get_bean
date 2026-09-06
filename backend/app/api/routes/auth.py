@@ -1,13 +1,12 @@
 # 身份校验路由
 from fastapi import APIRouter, Depends, HTTPException  
 from app.schemas import auth as auth_schema
-from app.core import captcha
+from app.core import captcha, security
 from app.core.rate_limit import request_rate_limit
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db
 from app.models.user import User
-from app.core.security import get_public_key, decrypt_password
 
 # 创建路由器对象
 # 路由前缀是auth， 标签方便文档进行分类
@@ -39,7 +38,7 @@ def get_captcha():
 )
 def get_public_key():
     """返回公钥"""
-    return {"public_key": get_public_key()} # 返回PEM格式的RSA公钥
+    return {"public_key": security.get_public_key()} # 返回PEM格式的RSA公钥
 
 
 # 注册接口
