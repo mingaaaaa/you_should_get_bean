@@ -15,22 +15,9 @@ import {
 import { kuaile } from "../fonts";
 import { API } from "../lib/api";
 import { encryptPassword } from "../lib/crypto";
+import { getPublicKey } from "../lib/publicKey";
 
 const CAPTCHA_COOLDOWN_MS = 3000;
-
-// 拉取失败返回 null：页面不用公钥也能正常填表，提交时再兜底重试
-async function fetchPublicKey(): Promise<string | null> {
-  try {
-    const res = await fetch(API.public_key, { cache: "no-store" });
-    const data = await res.json().catch(() => null);
-    if (res.ok && typeof data?.public_key === "string") {
-      return data.public_key;
-    }
-  } catch {
-    // 后端没开或网络异常，静默处理
-  }
-  return null;
-}
 
 type Status = "idle" | "loading" | "success";
 type Captcha = { captcha_id: string; image: string };
@@ -41,7 +28,6 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [captchaCode, setCaptchaCode] = useState("");
   const [captcha, setCaptcha] = useState<Captcha | null>(null);
-  const [publicKey, setPublicKey] = useState<string | null>(null);
   const [captchaMsg, setCaptchaMsg] = useState<string | null>(null);
   const [cooling, setCooling] = useState(false);
   const [errors, setErrors] = useState<{
@@ -81,9 +67,8 @@ export default function RegisterPage() {
     // 该规则无法跨 await 分析，误报为同步 setState
     /* eslint-disable react-hooks/set-state-in-effect */
     loadCaptcha();
-    fetchPublicKey().then((key) => {
-      if (key) setPublicKey(key);
-    });
+    // 预热公钥：有 localStorage 缓存时是纯本地读取，没缓存时提前拉一次，提交时不用等
+    getPublicKey();
     /* eslint-enable react-hooks/set-state-in-effect */
     return () => {
       if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
@@ -130,13 +115,8 @@ export default function RegisterPage() {
     if (Object.keys(e).length > 0) return;
 
     setStatus("loading");
-    // 提交前确保有公钥：挂载时没拿到（比如后端刚启动）就再试一次，
-    // 不随每次提交重复请求，公钥接口有限流（5 次/60 秒/IP）
-    let key = publicKey;
-    if (!key) {
-      key = await fetchPublicKey();
-      if (key) setPublicKey(key);
-    }
+    // 提交前拿公钥：优先命中 localStorage 缓存，没有时模块内部会拉取并自动去重
+    const key = await getPublicKey();
     if (!key) {
       setServerError("小熊没拿到加密公钥，稍后再试试 🍯");
       setStatus("idle");
@@ -154,8 +134,8 @@ export default function RegisterPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: username.trim(),
-          // 邮箱为空时不传该字段：后端 EmailStr 不接受 null，显式传空串也过不了校验
-          ...(email.trim() === "" ? {} : { email: email.trim() }),
+          // 空邮箱传 null：后端 email 是 EmailStr | None，收到 null/空串/缺省都会归一成 None
+          email: email.trim() || null,
           // 传 RSA 加密后的 base64 密文，不传明文
           password: cipher,
           captcha_id: captcha?.captcha_id ?? "",
