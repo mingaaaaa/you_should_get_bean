@@ -6,6 +6,10 @@ FastAPI + SQLAlchemy + MySQL
 
 1. 创建并激活虚拟环境：
 
+> **首次使用务必先执行这一步。** 虚拟环境（venv）是本项目独立的 Python 包安装空间，
+> 不创建的话依赖会装到全局 Python，容易与其他项目冲突，且 `.venv` 不在 git 仓库中，克隆下来不会自带。
+> 注意：每次打开新终端都要重新激活（`deactivate` 可退出）。
+
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\activate
@@ -17,7 +21,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-3. 在 `backend/` 下配置 `.env`（参考已有配置，需要以下键）：
+3. 在 `backend/` 下配置 `.env`：复制 `.env.example` 为 `.env`，填入你的 MySQL 密码等真实值（需要以下键）：
 
 ```
 DATABASE_URL=mysql+pymysql://用户名:密码@localhost:3306/beans_db?charset=utf8mb4
