@@ -1,0 +1,1 @@
+DECRYPT_FAILED = 4001  # rsa私钥解密失败

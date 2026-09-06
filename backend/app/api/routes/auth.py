@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db
 from app.models.user import User
 from argon2 import PasswordHasher
+from app.core.error_codes import DECRYPT_FAILED
 
 # 创建路由器对象
 # 路由前缀是auth， 标签方便文档进行分类
@@ -55,8 +56,13 @@ def register(data: auth_schema.RegisterSchemaRequest,db:Session = Depends(get_db
       raise HTTPException(status_code=400, detail="验证码错误或已过期")
     user = User(username=data.username, email=data.email, password_hash=data.password)
     # 私钥解密得到密码文本
-    password = security.decrypt_password(data.password)
-    print(f"解密后的密码: {password}")  # 打印解密后的密码
+    try:
+      password = security.decrypt_password(data.password)
+    except Exception:
+      raise HTTPException(status_code=400, detail={
+        "code": DECRYPT_FAILED,
+        "message": "密码解密失败",
+    })
     # 将解密的密码进行hash处理
     ph = PasswordHasher()
     user.password_hash = ph.hash(password)

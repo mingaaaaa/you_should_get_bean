@@ -13,7 +13,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """把所有 HTTPException 的响应体从 {"detail": ...} 改成 {"message": ...}"""
     return JSONResponse(
         status_code=exc.status_code,
-        content={"message": exc.detail},
+        content=exc.detail if isinstance(exc.detail, dict) else {"message": exc.detail},
         headers=exc.headers,  # 如果异常带了附加响应头（比如 429 的 Retry-After），不丢
     )
 

@@ -13,9 +13,9 @@ import {
   honeyInputClass,
 } from "../components/mascots";
 import { kuaile } from "../fonts";
-import { API } from "../lib/api";
+import { API, ErrCode } from "../lib/api";
 import { encryptPassword } from "../lib/crypto";
-import { getPublicKey } from "../lib/publicKey";
+import { getPublicKey, clearPublicKey } from "../lib/publicKey";
 
 const CAPTCHA_COOLDOWN_MS = 3000;
 
@@ -148,9 +148,13 @@ export default function RegisterPage() {
         return;
       }
       const msg = data?.message ?? "注册失败，小熊也不知道为什么 🍯";
+      // 公钥过期（后端轮换过密钥对）：清掉 localStorage 缓存，下次提交会自动拉新公钥
+      if (data?.code === ErrCode.DECRYPT_FAILED) {
+        clearPublicKey();
+      }
       setServerError(msg);
-      if (msg.includes("验证码")) {
-        // 验证码是一次性的，校验后（无论对错）已作废，必须换一张
+      // 验证码是一次性的，后端校验时已作废：解密失败和验证码错误都要换一张才能重试
+      if (data?.code === ErrCode.DECRYPT_FAILED || msg.includes("验证码")) {
         setCaptchaCode("");
         loadCaptcha();
       }
