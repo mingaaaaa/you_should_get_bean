@@ -46,7 +46,7 @@ export default function LoginPage() {
 
     setStatus("loading");
     // TODO: 接入后端登录接口后，把下面的模拟请求替换为
-    // await fetch("/api/v1/auth/login", { method: "POST", ... })
+    // await request("/api/v1/auth/login", { method: "POST", json: {...} })，见 lib/request.ts
     await new Promise((resolve) => setTimeout(resolve, 1000));
     setStatus("success");
   }

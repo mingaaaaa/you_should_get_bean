@@ -29,7 +29,3 @@ class CaptchaSchemaResponse(BaseModel):
 class PublicKeySchemaResponse(BaseModel):
     """公钥响应：RSA 公钥"""
     public_key: str     # PEM 格式的 RSA 公钥
-
-class RegisterSchemaResponse(BaseModel):
-    """注册响应：注册成功"""
-    message: str = "注册成功"

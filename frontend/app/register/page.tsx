@@ -14,6 +14,7 @@ import {
 } from "../components/mascots";
 import { kuaile } from "../fonts";
 import { API, ErrCode } from "../lib/api";
+import { request, ApiError } from "../lib/request";
 import { encryptPassword } from "../lib/crypto";
 import { getPublicKey, clearPublicKey } from "../lib/publicKey";
 
@@ -45,16 +46,17 @@ export default function RegisterPage() {
   // 加载验证码
   async function loadCaptcha() {
     try {
-      const res = await fetch(API.captcha, { cache: "no-store" });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        setCaptchaMsg(data?.message ?? "小熊拿不到验证码，稍后再试 🍯");
+      const data = await request<Captcha>(API.captcha, { cache: "no-store" });
+      setCaptcha(data);
+      setCaptchaMsg(null);
+    } catch (err) {
+      if (err instanceof ApiError && err.status !== 0) {
+        // 后端拒绝（如限流），有 message 用原文，没有走通用兜底
+        setCaptchaMsg(err.message || "小熊拿不到验证码，稍后再试 🍯");
       } else {
-        setCaptcha(data);
-        setCaptchaMsg(null);
+        // status=0：网络异常或超时
+        setCaptchaMsg("小熊连不上蜂巢服务器，看看后端开了吗 🍯");
       }
-    } catch {
-      setCaptchaMsg("小熊连不上蜂巢服务器，看看后端开了吗 🍯");
     }
     lastCaptchaAt.current = Date.now();
     setCooling(true);
@@ -129,10 +131,10 @@ export default function RegisterPage() {
       return;
     }
     try {
-      const res = await fetch(API.register, {
+      // 成功时信封 data 为 null（提示语在 message 里），这里只需要知道成功与否
+      await request(API.register, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        params: {
           username: username.trim(),
           // 空邮箱传 null：后端 email 是 EmailStr | None，收到 null/空串/缺省都会归一成 None
           email: email.trim() || null,
@@ -140,26 +142,27 @@ export default function RegisterPage() {
           password: cipher,
           captcha_id: captcha?.captcha_id ?? "",
           captcha_code: captchaCode,
-        }),
+        },
       });
-      const data = await res.json().catch(() => null);
-      if (res.ok) {
-        setStatus("success");
-        return;
+      setStatus("success");
+      return;
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status === 0) {
+        // status=0：网络异常或超时
+        setServerError("小熊连不上蜂巢服务器，看看后端开了吗 🍯");
+      } else {
+        const msg = err.message || "注册失败，小熊也不知道为什么 🍯";
+        // 公钥过期（后端轮换过密钥对）：清掉 localStorage 缓存，下次提交会自动拉新公钥
+        if (err.code === ErrCode.DECRYPT_FAILED) {
+          clearPublicKey();
+        }
+        setServerError(msg);
+        // 验证码是一次性的，后端校验时已作废：解密失败和验证码错误都要换一张才能重试
+        if (err.code === ErrCode.DECRYPT_FAILED || msg.includes("验证码")) {
+          setCaptchaCode("");
+          loadCaptcha();
+        }
       }
-      const msg = data?.message ?? "注册失败，小熊也不知道为什么 🍯";
-      // 公钥过期（后端轮换过密钥对）：清掉 localStorage 缓存，下次提交会自动拉新公钥
-      if (data?.code === ErrCode.DECRYPT_FAILED) {
-        clearPublicKey();
-      }
-      setServerError(msg);
-      // 验证码是一次性的，后端校验时已作废：解密失败和验证码错误都要换一张才能重试
-      if (data?.code === ErrCode.DECRYPT_FAILED || msg.includes("验证码")) {
-        setCaptchaCode("");
-        loadCaptcha();
-      }
-    } catch {
-      setServerError("小熊连不上蜂巢服务器，看看后端开了吗 🍯");
     }
     setStatus("idle");
   }

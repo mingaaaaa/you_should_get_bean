@@ -1,6 +1,7 @@
 // 公钥缓存：公钥接口有限流（5 次/60 秒/IP），且公钥只在后端手动重新生成密钥对时才会变，
 // 所以用 localStorage 缓存 + 24h 保质期 + 单飞去重，正常使用一个浏览器最多一天请求一次
 import { API } from "./api";
+import { request } from "./request";
 
 const STORAGE_KEY = "auth:public_key";
 const TTL_MS = 24 * 60 * 60 * 1000;
@@ -36,9 +37,9 @@ export function getPublicKey(): Promise<string | null> {
   const cached = readCache();
   if (cached) return Promise.resolve(cached);
   if (!inflight) {
-    inflight = fetch(API.public_key, { cache: "no-store" })
-      .then(async (res) => {
-        const data = res.ok ? await res.json().catch(() => null) : null;
+    // 非 200 / 网络异常 / 超时都会 reject，统一 catch 成 null，语义与返回值注释一致
+    inflight = request<{ public_key: string }>(API.public_key, { cache: "no-store" })
+      .then((data) => {
         const key = typeof data?.public_key === "string" ? data.public_key : null;
         if (key) writeCache(key);
         return key;
