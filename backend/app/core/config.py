@@ -8,3 +8,7 @@ load_dotenv() # 将.env文件中的键值对配置加载进来到当前程序中
 # os.getenv("DB_HOST") 本质上就是：
 # os.environ["DATABASE_URL"]  # 从这个内存字典里取值
 DATABASE_URL = os.getenv("DATABASE_URL") # 获取对应key的配置的值并存到指定变量中
+
+JWT_SECRET = os.getenv("JWT_SECRET") # 获取jwt签名密钥
+JWT_ALGORITHM = "HS256"          # 对称加密：签名和验证用同一个密钥
+JWT_EXPIRE_MINUTES = 60 * 24 * 30 # token 有效期，这里设 30 天

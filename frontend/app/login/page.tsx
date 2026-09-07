@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   HoneyBear,
   Bee,
@@ -15,6 +16,11 @@ import {
   type CaptchaFieldHandle,
 } from "../components/captcha-field";
 import { kuaile } from "../fonts";
+import { API, ErrCode } from "../lib/api";
+import { request, ApiError } from "../lib/request";
+import { encryptPassword } from "../lib/crypto";
+import { getPublicKey, clearPublicKey } from "../lib/publicKey";
+import { tokenStore } from "../lib/token";
 
 type Status = "idle" | "loading" | "success";
 
@@ -30,11 +36,19 @@ export default function LoginPage() {
     password?: string;
     captchaCode?: string;
   }>({});
+  const [serverError, setServerError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
-  // 当前验证码的 id（CaptchaField 每次加载后同步过来），
-  // 接入登录接口后提交时要用；换图时 refresh 会清空输入，这里的 id 也会跟着更新
+  const router = useRouter();
+  // 当前验证码的 id（CaptchaField 每次加载后同步过来），提交时要带 captcha_id；
+  // 换图时 refresh 会清空输入，这里的 id 也会跟着更新
   const captchaIdRef = useRef("");
   const captchaRef = useRef<CaptchaFieldHandle>(null);
+
+  useEffect(() => {
+    // 验证码的拉取/刷新都移进了 CaptchaField，挂载时它会自己加载第一张；
+    // 页面只负责预热公钥：有 localStorage 缓存时是纯本地读取，没缓存时提前拉一次，提交时不用等
+    getPublicKey();
+  }, []);
 
   function validate() {
     const e: { account?: string; password?: string; captchaCode?: string } = {};
@@ -60,23 +74,63 @@ export default function LoginPage() {
 
   async function handleSubmit(ev: FormEvent<HTMLFormElement>) {
     ev.preventDefault();
-    if (status === "loading") return;
+    // 成功后的 1 秒展示窗口里也不允许重复提交
+    if (status !== "idle") return;
     const e = validate();
     setErrors(e);
+    setServerError(null);
     if (Object.keys(e).length > 0) return;
 
     setStatus("loading");
-    // TODO: 接入后端登录接口后，把下面的模拟请求替换为（见 lib/request.ts）：
-    // await request("/api/v1/auth/login", { method: "POST", params: {
-    //   account, // 用户名或邮箱，后端按是否含 @ 决定查 username 还是 email 字段
-    //   password: RSA 加密后的密文（加密方式同注册页，getPublicKey + encryptPassword）,
-    //   captcha_id: captchaIdRef.current,
-    //   captcha_code: captchaCode,
-    // } })
-    // 注意 request 的请求体字段名是 params（不是 json）；
-    // 登录失败时验证码已被后端消费，要调 captchaRef.current?.refresh() 换一张再重试
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setStatus("success");
+    // 提交前拿公钥：优先命中 localStorage 缓存，没有时模块内部会拉取并自动去重
+    const key = await getPublicKey();
+    if (!key) {
+      setServerError("小熊没拿到加密公钥，稍后再试试 🍯");
+      setStatus("idle");
+      return;
+    }
+    const cipher = encryptPassword(key, password);
+    if (!cipher) {
+      setServerError("密码加密失败了，稍后再试试 🍯");
+      setStatus("idle");
+      return;
+    }
+    try {
+      // 成功时信封 data 里是后端签发的 JWT
+      const { token } = await request<{ token: string }>(API.login, {
+        method: "POST",
+        params: {
+          // 用户名或邮箱，后端按是否含 @ 决定查 username 还是 email 字段
+          account: account.trim(),
+          // 传 RSA 加密后的 base64 密文，不传明文
+          password: cipher,
+          captcha_id: captchaIdRef.current,
+          captcha_code: captchaCode,
+        },
+      });
+      // 存好 token，之后 request 会自动带上 Authorization 头
+      tokenStore.set(token);
+      setStatus("success");
+      // 让"登录成功"的提示先露个脸，再带用户回蜂巢（首页）
+      setTimeout(() => router.push("/"), 1000);
+      return;
+    } catch (err) {
+      if (!(err instanceof ApiError) || err.status === 0) {
+        // status=0：网络异常或超时，请求没到后端，验证码还没被消费，不用换图
+        setServerError("小熊连不上蜂巢服务器，看看后端开了吗 🍯");
+      } else {
+        const msg = err.message || "登录失败，小熊也不知道为什么 🍯";
+        // 公钥过期（后端轮换过密钥对）：清掉 localStorage 缓存，下次提交会自动拉新公钥
+        if (err.code === ErrCode.DECRYPT_FAILED) {
+          clearPublicKey();
+        }
+        setServerError(msg);
+        // 登录接口第一步就校验并消费验证码：只要请求到了后端（无论失败原因），
+        // 这张验证码都作废了，必须换一张才能重试；refresh 会清空输入框并换新图
+        captchaRef.current?.refresh();
+      }
+    }
+    setStatus("idle");
   }
 
   return (
@@ -109,6 +163,12 @@ export default function LoginPage() {
         {status === "success" && (
           <div className="mt-5 rounded-2xl border-2 border-honey/40 bg-honey/15 px-4 py-3 text-center text-cocoa">
             🍯 登录成功！小熊这就带你去蜂巢～
+          </div>
+        )}
+
+        {serverError && (
+          <div className="mt-5 rounded-2xl border-2 border-[#e8795a]/50 bg-[#e8795a]/10 px-4 py-3 text-center text-sm text-[#d1543b]">
+            {serverError}
           </div>
         )}
 

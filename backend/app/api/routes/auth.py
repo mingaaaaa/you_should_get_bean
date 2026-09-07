@@ -6,7 +6,7 @@ from app.core import captcha, security
 from app.core.rate_limit import request_rate_limit
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
-from app.api.deps import get_db
+from app.api.deps import get_db, get_current_user
 from app.models.user import User
 from argon2 import PasswordHasher, exceptions 
 from app.core.error_codes import DECRYPT_FAILED
@@ -51,7 +51,7 @@ def get_public_key():
   summary="注册新用户", # 摘要
   response_model=common.ApiResponse, # common.ok其实已经返回了正确的结构，这里是为了统一以及/docs里能看到嵌套结构吗，还有就是加了一层保险
 )
-def register(data: auth_schema.RegisterSchemaRequest,db:Session = Depends(get_db)):
+def register(data: auth_schema.RegisterSchemaRequest, db:Session = Depends(get_db)):
     """注册新用户"""
     # 校验验证码是否正确
     if not captcha.captcha_verify(data.captcha_id, data.captcha_code):
@@ -113,4 +113,18 @@ def login(data: auth_schema.LoginSchemaRequest, db: Session = Depends(get_db)):
   except exceptions.VerifyMismatchError:
     raise HTTPException(status_code=400, detail="用户名或密码错误")
   # 如果都符合则返回token
-  return common.ok({"token": '123'})
+  return common.ok({"token": security.gen_jwt_token(user_db.id)})
+
+
+# 当前用户信息接口（需要登录）
+@router.get(
+  '/me', # 路径  /auth/me
+  summary="获取当前登录用户信息",
+  response_model=common.ApiResponse[auth_schema.MeSchemaResponse], # 响应模型（信封套用户信息）
+  responses={401: {"description": "未登录"}, 402: {"description": "token无效"}, 403: {"description": "token过期"}, 410: {"description": "用户不存在或已被禁用"}}, # 鉴权失败的几种情况也展示到文档里
+)
+def me(user: User = Depends(get_current_user)):
+  """返回当前登录用户的信息"""
+  # get_current_user 依赖已经完成了：取请求头token → 验签名和有效期 → 查库确认用户有效
+  # 走到这里 user 一定是有效用户，直接返回需要暴露的字段（不返回 password_hash 等敏感字段）
+  return common.ok({"id": user.id, "username": user.username, "email": user.email})

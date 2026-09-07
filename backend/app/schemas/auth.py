@@ -46,3 +46,10 @@ class PublicKeySchemaResponse(BaseModel):
 class LoginSchemaResponse(BaseModel):
     """登录响应：包含访问令牌"""
     token: str
+
+# 当前用户信息响应
+class MeSchemaResponse(BaseModel):
+    """当前登录用户信息：/auth/me 用，token 验证通过后返回"""
+    id: int
+    username: str
+    email: EmailStr | None = None  # 注册时邮箱可不填，所以可能为 None
