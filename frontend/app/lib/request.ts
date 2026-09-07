@@ -20,10 +20,15 @@ export type RequestOptions = Omit<RequestInit, 'signal'> & {
   /** 传了自动 JSON.stringify 并补 Content-Type，省去调用处手写 */
   params?: unknown;
   timeout?: number; // 单个接口的超时时间
+  signal?: AbortSignal; // 外部手动终止
 };
 
 export async function request<T = unknown>(url: string, options: RequestOptions = {}): Promise<T> {
-  const { params, timeout = TIMEOUT_MS, ...init } = options;
+  const { params, timeout = TIMEOUT_MS, signal, ...init } = options;
+  // 默认有一个超时的signal
+  const signals: AbortSignal[] = [AbortSignal.timeout(timeout)];
+  // 如果手动传了signal
+  if (signal) signals.push(signal);
   let res: Response;
   try {
     res = await fetch(url, {
@@ -33,8 +38,8 @@ export async function request<T = unknown>(url: string, options: RequestOptions 
         headers: { 'Content-Type': 'application/json', ...init.headers },
         body: JSON.stringify(params),
       }),
-      // 超时signal取消
-      signal: AbortSignal.timeout(timeout),
+      // 任意一个 signal 触发就 abort
+      signal: AbortSignal.any(signals),
     });
   } catch {
     // fetch 只在网络失败/超时时 reject，此时没有响应体，统一归为 status=0、message 为空
