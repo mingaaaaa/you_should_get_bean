@@ -19,10 +19,11 @@ export class ApiError extends Error {
 export type RequestOptions = Omit<RequestInit, 'signal'> & {
   /** 传了自动 JSON.stringify 并补 Content-Type，省去调用处手写 */
   params?: unknown;
+  timeout?: number; // 单个接口的超时时间
 };
 
 export async function request<T = unknown>(url: string, options: RequestOptions = {}): Promise<T> {
-  const { params, ...init } = options;
+  const { params, timeout = TIMEOUT_MS, ...init } = options;
   let res: Response;
   try {
     res = await fetch(url, {
@@ -32,8 +33,8 @@ export async function request<T = unknown>(url: string, options: RequestOptions 
         headers: { 'Content-Type': 'application/json', ...init.headers },
         body: JSON.stringify(params),
       }),
-      // signal 由封装独占：超时策略统一在这里管，调用方不传
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      // 超时signal取消
+      signal: AbortSignal.timeout(timeout),
     });
   } catch {
     // fetch 只在网络失败/超时时 reject，此时没有响应体，统一归为 status=0、message 为空
