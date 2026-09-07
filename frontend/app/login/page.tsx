@@ -1,38 +1,59 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import {
   HoneyBear,
   Bee,
   Paw,
-  MailIcon,
+  UserIcon,
   LockIcon,
   honeyInputClass,
 } from "../components/mascots";
+import {
+  CaptchaField,
+  type CaptchaFieldHandle,
+} from "../components/captcha-field";
 import { kuaile } from "../fonts";
 
 type Status = "idle" | "loading" | "success";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  // 登录标识：用户名或邮箱，一个输入框二选一，后端按是否含 @ 区分
+  const [account, setAccount] = useState("");
   const [password, setPassword] = useState("");
   const [showPwd, setShowPwd] = useState(false);
   const [remember, setRemember] = useState(false);
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [captchaCode, setCaptchaCode] = useState("");
+  const [errors, setErrors] = useState<{
+    account?: string;
+    password?: string;
+    captchaCode?: string;
+  }>({});
   const [status, setStatus] = useState<Status>("idle");
+  // 当前验证码的 id（CaptchaField 每次加载后同步过来），
+  // 接入登录接口后提交时要用；换图时 refresh 会清空输入，这里的 id 也会跟着更新
+  const captchaIdRef = useRef("");
+  const captchaRef = useRef<CaptchaFieldHandle>(null);
 
   function validate() {
-    const e: { email?: string; password?: string } = {};
-    if (!email.trim()) {
-      e.email = "小熊说：先告诉小熊你的邮箱吧 🍯";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      e.email = "小熊说：这个邮箱看起来怪怪的～";
+    const e: { account?: string; password?: string; captchaCode?: string } = {};
+    const name = account.trim();
+    if (!name) {
+      e.account = "小熊说：先告诉小熊你的名字或邮箱吧 🍯";
+    } else if (name.includes("@") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(name)) {
+      // 带 @ 才按邮箱格式校验，不带 @ 就当作用户名，长度合法性交给后端判断
+      e.account = "小熊说：这个邮箱看起来怪怪的～";
     }
     if (!password) {
       e.password = "小熊说：蜂蜜密码不能为空哦 🍯";
     } else if (password.length < 6) {
       e.password = "小熊说：蜂蜜密码至少要 6 位哦 🍯";
+    }
+    if (!captchaCode) {
+      e.captchaCode = "小熊说：把图里的 4 位数字告诉小熊哦 🍯";
+    } else if (!/^\d{4}$/.test(captchaCode)) {
+      e.captchaCode = "小熊说：验证码是 4 位数字哦 🍯";
     }
     return e;
   }
@@ -45,8 +66,15 @@ export default function LoginPage() {
     if (Object.keys(e).length > 0) return;
 
     setStatus("loading");
-    // TODO: 接入后端登录接口后，把下面的模拟请求替换为
-    // await request("/api/v1/auth/login", { method: "POST", json: {...} })，见 lib/request.ts
+    // TODO: 接入后端登录接口后，把下面的模拟请求替换为（见 lib/request.ts）：
+    // await request("/api/v1/auth/login", { method: "POST", params: {
+    //   account, // 用户名或邮箱，后端按是否含 @ 决定查 username 还是 email 字段
+    //   password: RSA 加密后的密文（加密方式同注册页，getPublicKey + encryptPassword）,
+    //   captcha_id: captchaIdRef.current,
+    //   captcha_code: captchaCode,
+    // } })
+    // 注意 request 的请求体字段名是 params（不是 json）；
+    // 登录失败时验证码已被后端消费，要调 captchaRef.current?.refresh() 换一张再重试
     await new Promise((resolve) => setTimeout(resolve, 1000));
     setStatus("success");
   }
@@ -86,24 +114,24 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-5">
           <div>
-            <label htmlFor="email" className="mb-1.5 block pl-1 text-sm font-medium text-cocoa">
-              邮箱
+            <label htmlFor="account" className="mb-1.5 block pl-1 text-sm font-medium text-cocoa">
+              用户名 / 邮箱
             </label>
             <div className="relative">
-              <MailIcon />
+              <UserIcon />
               <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                placeholder="bear@honey.com"
-                value={email}
-                onChange={(ev) => setEmail(ev.target.value)}
-                aria-invalid={!!errors.email}
-                className={honeyInputClass(!!errors.email)}
+                id="account"
+                type="text"
+                autoComplete="username"
+                placeholder="bear 或 bear@honey.com"
+                value={account}
+                onChange={(ev) => setAccount(ev.target.value)}
+                aria-invalid={!!errors.account}
+                className={honeyInputClass(!!errors.account)}
               />
             </div>
-            {errors.email && (
-              <p className="mt-1.5 pl-1 text-sm text-[#d1543b]">{errors.email}</p>
+            {errors.account && (
+              <p className="mt-1.5 pl-1 text-sm text-[#d1543b]">{errors.account}</p>
             )}
           </div>
 
@@ -169,6 +197,15 @@ export default function LoginPage() {
               <p className="mt-1.5 pl-1 text-sm text-[#d1543b]">{errors.password}</p>
             )}
           </div>
+
+          <CaptchaField
+            id="login-captcha"
+            value={captchaCode}
+            onChange={setCaptchaCode}
+            error={errors.captchaCode}
+            onLoad={(captcha) => (captchaIdRef.current = captcha?.captcha_id ?? "")}
+            ref={captchaRef}
+          />
 
           <div className="flex items-center justify-between pl-1">
             <label className="flex cursor-pointer items-center gap-2 text-sm text-cocoa">

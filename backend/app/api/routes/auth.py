@@ -8,8 +8,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.api.deps import get_db
 from app.models.user import User
-from argon2 import PasswordHasher
+from argon2 import PasswordHasher, exceptions 
 from app.core.error_codes import DECRYPT_FAILED
+from sqlalchemy import select, or_
 
 # 创建路由器对象
 # 路由前缀是auth， 标签方便文档进行分类
@@ -48,14 +49,13 @@ def get_public_key():
 @router.post(
   '/register', # 路径  /auth/register
   summary="注册新用户", # 摘要
-  response_model=common.ApiResponse, # 响应模型（注册成功没有数据体，信封 data 为 null）
+  response_model=common.ApiResponse, # common.ok其实已经返回了正确的结构，这里是为了统一以及/docs里能看到嵌套结构吗，还有就是加了一层保险
 )
 def register(data: auth_schema.RegisterSchemaRequest,db:Session = Depends(get_db)):
     """注册新用户"""
     # 校验验证码是否正确
     if not captcha.captcha_verify(data.captcha_id, data.captcha_code):
       raise HTTPException(status_code=400, detail="验证码错误或已过期")
-    user = User(username=data.username, email=data.email, password_hash=data.password)
     # 私钥解密得到密码文本
     try:
       password = security.decrypt_password(data.password)
@@ -66,13 +66,51 @@ def register(data: auth_schema.RegisterSchemaRequest,db:Session = Depends(get_db
     })
     # 将解密的密码进行hash处理
     ph = PasswordHasher()
-    user.password_hash = ph.hash(password)
+    user = User(username=data.username, email=data.email, password_hash=ph.hash(password))
     try:
         db.add(user)
         db.commit()
-      db.refresh(user)  # 重新 SELECT，拿回数据库生成的 id、created_at
-      return common.ok(message="注册成功")
+        db.refresh(user)  # 重新 SELECT，拿回数据库生成的 id、created_at
+        return common.ok(message="注册成功")
     except IntegrityError:
         db.rollback() # 回滚事务，避免后续操作报错
         raise HTTPException(status_code=400, detail="注册失败，用户名或邮箱已存在")
     
+
+# 登录接口
+@router.post(
+  '/login', # 路径  /auth/login
+  summary="用户登录", # 摘要
+  response_model=common.ApiResponse[auth_schema.LoginSchemaResponse], # 响应模型（信封套数据模型，/docs 里能看到嵌套结构）
+)
+def login(data: auth_schema.LoginSchemaRequest, db: Session = Depends(get_db)):
+  # 校验验证码是否正确
+  if not captcha.captcha_verify(data.captcha_id, data.captcha_code):
+    raise HTTPException(status_code=400, detail="验证码错误或已过期")
+  # rsa解密密码
+  try:
+    password_str = security.decrypt_password(data.password)
+  except Exception:
+    raise HTTPException(status_code=400, detail={
+        "code": DECRYPT_FAILED,
+        "message": "密码解密失败",
+    })
+  # 这里不使用try语句是因为使用try捕获会捕获数据库挂了等基础设施级别的故障
+  # 这种级别的错误应该让fastapi自动抛出500
+  user_db = db.execute(
+    select(User).where(
+      or_(User.username == data.account, User.email == data.account)
+    )
+  ).scalar_one_or_none() # 从返回的Result中取第一条数据 查不到时返回None
+  # 如果用户不存在则提示用户
+  # 不要明确告诉用户是用户名还是密码错误，否则攻击者容易确认账号是否有效
+  if user_db is None:
+    raise HTTPException(status_code=400, detail="用户名或密码错误")
+  # 使用解密的密码进行比对
+  ph = PasswordHasher()
+  try:
+    ph.verify(user_db.password_hash, password_str)
+  except exceptions.VerifyMismatchError:
+    raise HTTPException(status_code=400, detail="用户名或密码错误")
+  # 如果都符合则返回token
+  return common.ok({"token": '123'})

@@ -3,6 +3,7 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 
 # ========== 请求模型 ==========
+# 注册请求参数
 class RegisterSchemaRequest(BaseModel):
     """注册请求：用户名 + 密码 + 验证码；邮箱可不填"""
     username: str
@@ -13,12 +14,23 @@ class RegisterSchemaRequest(BaseModel):
 
     # 前端如果传来空字符串（而不是干脆不发这个字段），先归一成 None，
     # 否则空字符串过不了 EmailStr 校验，会报 422
+    # 声明一个字段校验器  在类型转换和校验之前执行
     @field_validator("email", mode="before")
     @classmethod
     def empty_email_to_none(cls, v):
+        # 判断是否为空字符串
         if isinstance(v, str) and not v.strip():
             return None
         return v
+
+# 登录请求参数
+class LoginSchemaRequest(BaseModel):
+    """登录请求：账户(用户名或密码) + 密码 + 验证码"""
+    account: str
+    password: str
+    captcha_id: str
+    captcha_code: str
+
 
 # ========== 响应模型 ==========
 class CaptchaSchemaResponse(BaseModel):
@@ -29,3 +41,8 @@ class CaptchaSchemaResponse(BaseModel):
 class PublicKeySchemaResponse(BaseModel):
     """公钥响应：RSA 公钥"""
     public_key: str     # PEM 格式的 RSA 公钥
+
+# 登录请求参数
+class LoginSchemaResponse(BaseModel):
+    """登录响应：包含访问令牌"""
+    token: str

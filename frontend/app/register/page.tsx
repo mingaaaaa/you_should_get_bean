@@ -9,28 +9,28 @@ import {
   UserIcon,
   MailIcon,
   LockIcon,
-  ShieldIcon,
   honeyInputClass,
 } from "../components/mascots";
+import {
+  CaptchaField,
+  type CaptchaData,
+  type CaptchaFieldHandle,
+} from "../components/captcha-field";
 import { kuaile } from "../fonts";
 import { API, ErrCode } from "../lib/api";
 import { request, ApiError } from "../lib/request";
 import { encryptPassword } from "../lib/crypto";
 import { getPublicKey, clearPublicKey } from "../lib/publicKey";
 
-const CAPTCHA_COOLDOWN_MS = 3000;
-
 type Status = "idle" | "loading" | "success";
-type Captcha = { captcha_id: string; image: string };
 
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
   const [captchaCode, setCaptchaCode] = useState("");
-  const [captcha, setCaptcha] = useState<Captcha | null>(null);
-  const [captchaMsg, setCaptchaMsg] = useState<string | null>(null);
-  const [cooling, setCooling] = useState(false);
+  // 当前验证码的 id + 图片，由 CaptchaField 每次加载后同步过来，提交时要带 captcha_id
+  const [captchaInfo, setCaptchaInfo] = useState<CaptchaData | null>(null);
   const [errors, setErrors] = useState<{
     username?: string;
     password?: string;
@@ -40,47 +40,13 @@ export default function RegisterPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
 
-  const lastCaptchaAt = useRef(0);
-  const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // 加载验证码
-  async function loadCaptcha() {
-    try {
-      const data = await request<Captcha>(API.captcha, { cache: "no-store" });
-      setCaptcha(data);
-      setCaptchaMsg(null);
-    } catch (err) {
-      if (err instanceof ApiError && err.status !== 0) {
-        // 后端拒绝（如限流），有 message 用原文，没有走通用兜底
-        setCaptchaMsg(err.message || "小熊拿不到验证码，稍后再试 🍯");
-      } else {
-        // status=0：网络异常或超时
-        setCaptchaMsg("小熊连不上蜂巢服务器，看看后端开了吗 🍯");
-      }
-    }
-    lastCaptchaAt.current = Date.now();
-    setCooling(true);
-    if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
-    cooldownTimer.current = setTimeout(() => setCooling(false), CAPTCHA_COOLDOWN_MS);
-  }
+  const captchaRef = useRef<CaptchaFieldHandle>(null);
 
   useEffect(() => {
-    // 挂载时拉取第一张验证码和公钥；所有 setState 都在 await fetch 之后的异步回调里，
-    // 该规则无法跨 await 分析，误报为同步 setState
-    /* eslint-disable react-hooks/set-state-in-effect */
-    loadCaptcha();
-    // 预热公钥：有 localStorage 缓存时是纯本地读取，没缓存时提前拉一次，提交时不用等
+    // 验证码的拉取/刷新都移进了 CaptchaField，挂载时它会自己加载第一张；
+    // 页面只负责预热公钥：有 localStorage 缓存时是纯本地读取，没缓存时提前拉一次，提交时不用等
     getPublicKey();
-    /* eslint-enable react-hooks/set-state-in-effect */
-    return () => {
-      if (cooldownTimer.current) clearTimeout(cooldownTimer.current);
-    };
   }, []);
-
-  function handleCaptchaClick() {
-    if (Date.now() - lastCaptchaAt.current < CAPTCHA_COOLDOWN_MS) return;
-    loadCaptcha();
-  }
 
   // 校验
   function validate() {
@@ -140,7 +106,7 @@ export default function RegisterPage() {
           email: email.trim() || null,
           // 传 RSA 加密后的 base64 密文，不传明文
           password: cipher,
-          captcha_id: captcha?.captcha_id ?? "",
+          captcha_id: captchaInfo?.captcha_id ?? "",
           captcha_code: captchaCode,
         },
       });
@@ -158,9 +124,9 @@ export default function RegisterPage() {
         }
         setServerError(msg);
         // 验证码是一次性的，后端校验时已作废：解密失败和验证码错误都要换一张才能重试
+        // refresh 会清空输入框并换新图
         if (err.code === ErrCode.DECRYPT_FAILED || msg.includes("验证码")) {
-          setCaptchaCode("");
-          loadCaptcha();
+          captchaRef.current?.refresh();
         }
       }
     }
@@ -281,67 +247,14 @@ export default function RegisterPage() {
                 )}
               </div>
 
-              <div>
-                <label htmlFor="captcha" className="mb-1.5 block pl-1 text-sm font-medium text-cocoa">
-                  验证码
-                </label>
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <ShieldIcon />
-                    <input
-                      id="captcha"
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={4}
-                      autoComplete="off"
-                      placeholder="4 位数字"
-                      value={captchaCode}
-                      onChange={(ev) =>
-                        setCaptchaCode(ev.target.value.replace(/\D/g, "").slice(0, 4))
-                      }
-                      aria-invalid={!!errors.captchaCode}
-                      className={honeyInputClass(!!errors.captchaCode)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCaptchaClick}
-                    title={cooling ? "小蜜蜂搬运中，稍等一下就能换" : "看不清？点击换一张"}
-                    aria-label="点击刷新验证码"
-                    className={`relative shrink-0 overflow-hidden rounded-xl border-2 border-honey/30 bg-cream transition ${
-                      cooling ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-honey active:scale-95"
-                    }`}
-                    style={{ width: 120, height: 40 }}
-                  >
-                    {captcha ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- data URL 动态图片，不适合走 next/image
-                      <img
-                        src={captcha.image}
-                        alt="验证码"
-                        width={120}
-                        height={40}
-                        className="block"
-                        draggable={false}
-                      />
-                    ) : (
-                      <span className="flex h-full w-full items-center justify-center text-xs text-cocoa-light">
-                        加载中…
-                      </span>
-                    )}
-                  </button>
-                </div>
-                {errors.captchaCode && (
-                  <p className="mt-1.5 pl-1 text-sm text-[#d1543b]">{errors.captchaCode}</p>
-                )}
-                {captchaMsg && (
-                  <p className="mt-1.5 pl-1 text-sm text-[#d1543b]">{captchaMsg}</p>
-                )}
-                {cooling && !captchaMsg && (
-                  <p className="mt-1.5 pl-1 text-xs text-cocoa-light/80">
-                    小蜜蜂搬运中，稍等一下就能换一张
-                  </p>
-                )}
-              </div>
+              <CaptchaField
+                id="captcha"
+                value={captchaCode}
+                onChange={setCaptchaCode}
+                error={errors.captchaCode}
+                onLoad={setCaptchaInfo}
+                ref={captchaRef}
+              />
 
               <button
                 type="submit"
