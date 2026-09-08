@@ -116,8 +116,12 @@ export default function LoginPage() {
       return;
     } catch (err) {
       if (!(err instanceof ApiError) || err.status === 0) {
-        // status=0：网络异常或超时，请求没到后端，验证码还没被消费，不用换图
-        setServerError("小熊连不上蜂巢服务器，看看后端开了吗 🍯");
+        // status=0：请求没到后端（kind 细分超时/断网），验证码还没被消费，不用换图
+        setServerError(
+          err instanceof ApiError && err.kind === "timeout"
+            ? "请求超时了，稍后再试试 🍯"
+            : "小熊连不上蜂巢服务器，看看后端开了吗 🍯"
+        );
       } else {
         const msg = err.message || "登录失败，小熊也不知道为什么 🍯";
         // 公钥过期（后端轮换过密钥对）：清掉 localStorage 缓存，下次提交会自动拉新公钥
