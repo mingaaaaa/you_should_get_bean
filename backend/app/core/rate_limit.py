@@ -7,7 +7,7 @@ LIMIT = 5                              # 最多 5 次
 WINDOW_SECONDS = 60                    # 每 60 秒
 
 # 请求限流
-def request_rate_limit(request: Request,count: int = LIMIT, window: int = WINDOW_SECONDS):
+def request_rate_limit(request: Request, count: int = LIMIT, window: int = WINDOW_SECONDS):
     ip = request.client.host                          # 从请求元信息拿到来源 IP
     now = time.time()
 
