@@ -1,5 +1,9 @@
 # 认证接口的契约
+import re
 from pydantic import BaseModel, EmailStr, field_validator
+
+# 判定"像不像邮箱"的正则，和前端 register 页的保持一致，两边判定才不会打架
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 # ========== 请求模型 ==========
@@ -21,6 +25,15 @@ class RegisterSchemaRequest(BaseModel):
         # 判断是否为空字符串
         if isinstance(v, str) and not v.strip():
             return None
+        return v
+
+    # 用户名不能是邮箱格式：登录时一个 account 字段同时按用户名/邮箱两列查询，
+    # 邮箱格式的用户名可能跟别人的注册邮箱撞车（两列同时命中，登录查询直接 500）
+    @field_validator("username")
+    @classmethod
+    def username_not_email(cls, v):
+        if _EMAIL_RE.match(v.strip()):
+            raise ValueError("用户名不能是邮箱格式")
         return v
 
 # 登录请求参数

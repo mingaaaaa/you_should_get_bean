@@ -24,6 +24,9 @@ import { getPublicKey, clearPublicKey } from "../lib/publicKey";
 
 type Status = "idle" | "loading" | "success";
 
+// 判定"像不像邮箱"的正则，和后端 schemas/auth.py 的保持一致，两边判定才不会打架
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function RegisterPage() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -56,13 +59,17 @@ export default function RegisterPage() {
       e.username = "小熊说：先给自己起个名字吧 🍯";
     } else if (name.length < 2 || name.length > 20) {
       e.username = "小熊说：名字要 2~20 个字哦 🍯";
+    } else if (EMAIL_RE.test(name)) {
+      // 邮箱格式留给 email 字段用：登录时一个账号框同时按用户名/邮箱查询，
+      // 邮箱格式的用户名会跟别人的邮箱撞车（后端同理也拦了一道）
+      e.username = "小熊说：名字不能是邮箱格式哦 🍯";
     }
     if (!password) {
       e.password = "小熊说：蜂蜜密码不能为空哦 🍯";
     } else if (password.length < 6) {
       e.password = "小熊说：蜂蜜密码至少要 6 位哦 🍯";
     }
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (email.trim() && !EMAIL_RE.test(email.trim())) {
       e.email = "小熊说：这个邮箱看起来怪怪的～";
     }
     if (!captchaCode) {
